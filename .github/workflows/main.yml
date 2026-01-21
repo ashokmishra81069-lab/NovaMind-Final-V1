@@ -1,0 +1,73 @@
+name: NovaMind Final Build
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+
+    steps:
+      # 1️⃣ Checkout repo
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # 2️⃣ Setup Java JDK 17 (Android build ke liye)
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # 3️⃣ Setup Python 3.10
+      - name: Setup Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # 4️⃣ Install system dependencies for Buildozer + Android
+      - name: Install System Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y \
+            build-essential git ffmpeg \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libportmidi-dev libswscale-dev libavformat-dev libavcodec-dev \
+            zlib1g-dev libgstreamer1.0-gstreamer-lite-dev libgstreamer1.0-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+            libsqlite3-dev sqlite3 bzip2 libbz2-dev libssl-dev openssl \
+            libgdbm-dev liblzma-dev libreadline-dev tk-dev libffi-dev libexpat1-dev \
+            libbluetooth-dev
+
+      # 5️⃣ Upgrade pip + Install Buildozer + Cython
+      - name: Install Python Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install --user "Cython<3.0.0" buildozer
+
+      # 6️⃣ Add local python bin to PATH
+      - name: Add Local Python Bin to PATH
+        run: echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      # 7️⃣ Clean previous Buildozer builds
+      - name: Clean previous builds
+        run: buildozer android clean
+
+      # 8️⃣ Accept Android SDK license automatically
+      - name: Accept SDK License
+        run: yes | buildozer android update
+
+      # 9️⃣ Build the APK
+      - name: Build APK (Debug)
+        run: |
+          buildozer android debug
+        env:
+          APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
+          GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+
+      # 🔟 Upload APK artifact
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaMind-AI-Final
+          path: bin/*.apk
