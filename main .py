@@ -1,7 +1,8 @@
 import os
 import json
+import requests
 from datetime import datetime
-from groq import Groq
+
 from kivymd.app import MDApp
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.textfield import MDTextField
@@ -9,52 +10,52 @@ from kivymd.uix.label import MDLabel
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.boxlayout import BoxLayout
 from kivy.clock import Clock
+from kivy.utils import platform
 
-# API Key - Direct and working
-API_KEY = "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"
+# ⚠️ API KEY (temporarily here; later env/secure storage)
+API_KEY = "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"
 
 class NovaMindApp(MDApp):
     def build(self):
         self.theme_cls.primary_palette = "Cyan"
         self.theme_cls.theme_style = "Dark"
-        self.client = Groq(api_key=API_KEY)
-        
-        # Path for Android: Private internal storage
-        self.db_path = os.path.join(os.getcwd(), "chat_history.json")
-        
-        # Check and create JSON if missing
+
+        # ✅ ANDROID-SAFE STORAGE PATH
+        if platform == "android":
+            from android.storage import app_storage_path
+            self.base_path = app_storage_path()
+        else:
+            self.base_path = os.getcwd()
+
+        self.db_path = os.path.join(self.base_path, "chat_history.json")
         if not os.path.exists(self.db_path):
-            with open(self.db_path, 'w') as f:
+            with open(self.db_path, "w") as f:
                 json.dump([], f)
 
-        layout = BoxLayout(orientation='vertical', padding=20, spacing=10)
-        
-        # Dynamic chat display
+        layout = BoxLayout(orientation="vertical", padding=20, spacing=10)
+
         self.chat_label = MDLabel(
-            text="[color=00FFFF]NovaMind Lite[/color]\nSawal puchiye bhai...", 
-            halign="left", 
+            text="NovaMind AI\nSawal puchiye bhai...",
+            halign="left",
             size_hint_y=None,
-            theme_text_color="Custom",
-            text_color=(0, 1, 1, 1),
-            markup=True
         )
-        self.chat_label.bind(texture_size=self.chat_label.setter('size'))
-        
-        scroll = ScrollView(size_hint=(1, 1))
+        self.chat_label.bind(texture_size=self.chat_label.setter("size"))
+
+        scroll = ScrollView()
         scroll.add_widget(self.chat_label)
-        
+
         self.input_field = MDTextField(
-            hint_text="Ask Vikramaditya's AI...", 
+            hint_text="Ask NovaMind...",
             mode="rectangle",
             multiline=False
         )
-        
+
         send_btn = MDRaisedButton(
-            text="SEND CHAT", 
-            on_release=self.chat_logic, 
+            text="SEND",
+            on_release=self.chat_logic,
             pos_hint={"center_x": 0.5}
         )
-        
+
         layout.add_widget(scroll)
         layout.add_widget(self.input_field)
         layout.add_widget(send_btn)
@@ -62,47 +63,62 @@ class NovaMindApp(MDApp):
 
     def chat_logic(self, *args):
         query = self.input_field.text.strip()
-        if not query: return
-        
-        self.chat_label.text += f"\n\n[b]YOU:[/b] {query}\n\n[b]NOVAMIND:[/b] Thinking..."
+        if not query:
+            return
+
+        self.chat_label.text += f"\n\nYOU: {query}\n\nNOVAMIND: Thinking..."
         self.input_field.text = ""
-        # API call in a slight delay to keep UI smooth
-        Clock.schedule_once(lambda dt: self.get_api_response(query), 0.1)
 
-    def get_api_response(self, user_text):
+        Clock.schedule_once(lambda dt: self.fetch_ai(query), 0)
+
+    def fetch_ai(self, text):
         try:
-            res = self.client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": user_text}]
+            headers = {
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json"
+            }
+
+            payload = {
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": text}]
+            }
+
+            r = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=30
             )
-            ans = res.choices[0].message.content
-            # Update UI
-            self.chat_label.text = self.chat_label.text.replace("Thinking...", ans)
-            
-            # Reliable JSON Saving
-            self.save_to_json(user_text, ans)
-                
-        except Exception as e:
-            self.chat_label.text = self.chat_label.text.replace("Thinking...", "Network Error! Check data/WiFi.")
 
-    def save_to_json(self, q, a):
+            data = r.json()
+            answer = data["choices"][0]["message"]["content"]
+
+            self.chat_label.text = self.chat_label.text.replace(
+                "Thinking...", answer
+            )
+            self.save_chat(text, answer)
+
+        except Exception:
+            self.chat_label.text = self.chat_label.text.replace(
+                "Thinking...", "Network error! Internet check karo."
+            )
+
+    def save_chat(self, q, a):
         try:
-            data = []
-            if os.path.exists(self.db_path):
-                with open(self.db_path, 'r') as f:
-                    data = json.load(f)
-            
+            with open(self.db_path, "r") as f:
+                data = json.load(f)
+
             data.append({
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "question": q,
-                "answer": a
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "q": q,
+                "a": a
             })
-            
-            with open(self.db_path, 'w') as f:
-                json.dump(data, f, indent=4)
+
+            with open(self.db_path, "w") as f:
+                json.dump(data, f, indent=2)
+
         except:
-            pass # Don't crash if file writing fails
+            pass
 
 if __name__ == "__main__":
     NovaMindApp().run()
-    
